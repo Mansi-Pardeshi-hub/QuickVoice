@@ -1,3 +1,4 @@
+import { traceVoiceCall } from "../../langfuse.js";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../../../prisma/generated/prisma/client.js";
 import { BadRequestError } from "../../common/errors/badRequest.js";
@@ -92,6 +93,13 @@ export type AgentPreviewSession = {
 };
 
 export const createAgent = async (args: CreateAgentArgs) => {
+  // 🚀 LANGFUSE TELEMETRY TRACE
+  traceVoiceCall(
+    args.organizationId,
+    `Create Agent Request: ${args.name}`,
+    `Agent creation started with template: ${args.templateId || "default"}`
+  );
+
   const agentSlug = generateSlug(args.name);
   const existing = await agentRepository.findBySlug(
     args.organizationId,
@@ -144,6 +152,14 @@ export const createAgentPreviewSession = async (
   dynamicVariables?: unknown,
 ): Promise<AgentPreviewSession> => {
   const configuration = await getAgentConfig(organizationId, agentId);
+
+  // 🚀 LANGFUSE TELEMETRY TRACE
+  traceVoiceCall(
+    agentId,
+    configuration.firstMessage || "Agent Preview Initiated",
+    `Session room setup for Organization: ${organizationId}`
+  );
+
   return requestAgentPreviewSession(
     buildAgentPreviewSessionPayload({
       agentId,
@@ -331,9 +347,6 @@ export const updateAgent = async (
 ) => {
   const data: UpdateAgentInput & { agentSlug?: string } = { ...input };
 
-  // If the name is changing, regenerate the slug and verify uniqueness.
-  // Allow a rename that resolves to the same slug on the *same* agent
-  // (idempotent); reject only if another agent in the org already owns it.
   if (input.name) {
     const newSlug = generateSlug(input.name);
     const existing = await agentRepository.findBySlug(organizationId, newSlug);
